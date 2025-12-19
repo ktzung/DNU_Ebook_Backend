@@ -695,7 +695,325 @@ Update-Database
 
 ---
 
-# 🧪 MINI TEST
+## ❌ 6. CÁC LỖI THƯỜNG GẶP
+
+### ❌ Lỗi 1: Quên chạy Migration
+
+```csharp
+// ❌ Vấn đề: Tạo migration nhưng không apply
+dotnet ef migrations add InitialCreate
+// Quên chạy: dotnet ef database update
+// Database không được tạo → Lỗi khi chạy app
+
+// ✅ Giải pháp: Luôn update database sau khi tạo migration
+dotnet ef migrations add InitialCreate
+dotnet ef database update // ✅
+```
+
+**🔍 Giải thích:** Migration chỉ là file script, phải chạy `database update` để apply vào database.
+
+---
+
+### ❌ Lỗi 2: Connection String sai
+
+```csharp
+// ❌ Vấn đề: Connection string không đúng
+"Server=localhost;Database=MyDb;User=sa;Password=wrong" // ❌
+
+// ✅ Giải pháp: Kiểm tra connection string
+"Server=localhost;Database=MyDb;Integrated Security=True" // ✅ Windows Auth
+// Hoặc
+"Server=localhost;Database=MyDb;User Id=sa;Password=correct;TrustServerCertificate=True" // ✅ SQL Auth
+```
+
+**🔍 Giải thích:** Connection string sai sẽ không kết nối được database. Kiểm tra server name, database name, credentials.
+
+---
+
+### ❌ Lỗi 3: Migration conflict
+
+```csharp
+// ❌ Vấn đề: 2 người cùng tạo migration
+// Dev A: dotnet ef migrations add AddProductTable
+// Dev B: dotnet ef migrations add AddCategoryTable
+// → Conflict khi merge
+
+// ✅ Giải pháp: Merge migrations hoặc tạo migration mới
+dotnet ef migrations add MergeMigrations
+// Hoặc xóa migration conflict, tạo lại
+```
+
+**🔍 Giải thích:** Khi nhiều người cùng làm việc, có thể conflict migrations. Cần merge hoặc tạo migration mới.
+
+---
+
+### ❌ Lỗi 4: Quên cấu hình DbContext trong Program.cs
+
+```csharp
+// ❌ Vấn đề: Tạo DbContext nhưng không đăng ký
+public class AppDbContext : DbContext { }
+// Quên: builder.Services.AddDbContext<AppDbContext>()
+
+// ✅ Giải pháp: Đăng ký trong Program.cs
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(connectionString));
+```
+
+**🔍 Giải thích:** DbContext phải được đăng ký trong DI container để sử dụng.
+
+---
+
+### ❌ Lỗi 5: Migration không sync với code
+
+```csharp
+// ❌ Vấn đề: Sửa Entity nhưng không tạo migration mới
+public class Product
+{
+    public string Description { get; set; } // Thêm property mới
+}
+// Quên: dotnet ef migrations add AddDescription
+// Database không có column Description → Lỗi
+
+// ✅ Giải pháp: Luôn tạo migration khi thay đổi Entity
+dotnet ef migrations add AddDescription
+dotnet ef database update
+```
+
+**🔍 Giải thích:** Mọi thay đổi Entity phải có migration tương ứng. Database và code phải sync.
+
+---
+
+## 🎯 7. CASE STUDY / VÍ DỤ THỰC TẾ
+
+### Case Study 1: Database Design cho E-Shop
+
+**Yêu cầu:** Thiết kế database cho hệ thống bán hàng online với Products, Categories, Orders, Users.
+
+```csharp
+// 1. Category Entity
+public class Category
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    // Navigation property
+    public ICollection<Product> Products { get; set; } = new List<Product>();
+}
+
+// 2. Product Entity
+public class Product
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public decimal Price { get; set; }
+    public int Stock { get; set; }
+    public string? ImageUrl { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    // Foreign Key
+    public int CategoryId { get; set; }
+    public Category Category { get; set; } = null!;
+    
+    // Navigation properties
+    public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
+}
+
+// 3. User Entity
+public class User
+{
+    public int Id { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
+    public string Role { get; set; } = "Customer";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    public ICollection<Order> Orders { get; set; } = new List<Order>();
+}
+
+// 4. Order Entity
+public class Order
+{
+    public int Id { get; set; }
+    public DateTime OrderDate { get; set; } = DateTime.UtcNow;
+    public decimal TotalAmount { get; set; }
+    public string Status { get; set; } = "Pending";
+    public string? ShippingAddress { get; set; }
+    
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+    
+    public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
+}
+
+// 5. OrderItem Entity (Join table)
+public class OrderItem
+{
+    public int Id { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    
+    public int OrderId { get; set; }
+    public Order Order { get; set; } = null!;
+    
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+}
+
+// 6. DbContext
+public class AppDbContext : DbContext
+{
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+    
+    public DbSet<Category> Categories { get; set; }
+    public DbSet<Product> Products { get; set; }
+    public DbSet<User> Users { get; set; }
+    public DbSet<Order> Orders { get; set; }
+    public DbSet<OrderItem> OrderItems { get; set; }
+    
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        // Product - Category (Many-to-One)
+        modelBuilder.Entity<Product>()
+            .HasOne(p => p.Category)
+            .WithMany(c => c.Products)
+            .HasForeignKey(p => p.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict); // Không xóa Category nếu có Product
+        
+        // Order - User (Many-to-One)
+        modelBuilder.Entity<Order>()
+            .HasOne(o => o.User)
+            .WithMany(u => u.Orders)
+            .HasForeignKey(o => o.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        
+        // OrderItem - Order (Many-to-One)
+        modelBuilder.Entity<OrderItem>()
+            .HasOne(oi => oi.Order)
+            .WithMany(o => o.OrderItems)
+            .HasForeignKey(oi => oi.OrderId)
+            .OnDelete(DeleteBehavior.Cascade); // Xóa OrderItem khi xóa Order
+        
+        // OrderItem - Product (Many-to-One)
+        modelBuilder.Entity<OrderItem>()
+            .HasOne(oi => oi.Product)
+            .WithMany(p => p.OrderItems)
+            .HasForeignKey(oi => oi.ProductId)
+            .OnDelete(DeleteBehavior.Restrict);
+        
+        // Indexes
+        modelBuilder.Entity<Product>()
+            .HasIndex(p => p.Name);
+        
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.Email)
+            .IsUnique();
+    }
+}
+```
+
+**Best practices:**
+- Relationships rõ ràng
+- Cascade delete phù hợp
+- Indexes cho performance
+- Timestamps (CreatedAt)
+- Soft delete (IsActive)
+
+---
+
+## ✅ 8. BEST PRACTICES
+
+### 8.1. Entity Design Best Practices
+
+```csharp
+// ✅ Đúng: Entity có Id, timestamps, navigation properties
+public class Product
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+    
+    public int CategoryId { get; set; }
+    public Category Category { get; set; } = null!;
+}
+
+// ❌ Sai: Thiếu Id, không có navigation properties
+public class Product
+{
+    public string Name { get; set; } // ❌ Thiếu Id
+    public int CategoryId { get; set; } // ❌ Không có navigation property
+}
+```
+
+### 8.2. Migration Best Practices
+
+```csharp
+// ✅ Đúng: Migration name rõ ràng
+dotnet ef migrations add AddProductDescriptionColumn
+dotnet ef migrations add CreateOrderTable
+
+// ❌ Sai: Tên migration không rõ ràng
+dotnet ef migrations add Migration1
+dotnet ef migrations add Update
+```
+
+### 8.3. DbContext Best Practices
+
+```csharp
+// ✅ Đúng: DbContext với constructor injection
+public class AppDbContext : DbContext
+{
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+}
+
+// ✅ Đúng: Cấu hình trong OnModelCreating
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity<Product>()
+        .Property(p => p.Price)
+        .HasPrecision(18, 2);
+}
+```
+
+---
+
+# 📝 9. QUICK NOTES
+
+### Code First Workflow:
+1. Tạo Entity classes
+2. Tạo DbContext
+3. Đăng ký DbContext trong Program.cs
+4. Tạo Migration: `dotnet ef migrations add MigrationName`
+5. Apply Migration: `dotnet ef database update`
+
+### Data Annotations:
+- `[Key]`: Primary key
+- `[Required]`: Not null
+- `[MaxLength]`: Độ dài tối đa
+- `[Column]`: Tên column trong DB
+- `[Table]`: Tên table
+
+### Fluent API:
+- `HasKey()`: Primary key
+- `Property().IsRequired()`: Not null
+- `HasOne().WithMany()`: Relationships
+- `OnDelete()`: Cascade delete
+
+### Best Practices:
+- ✅ Code First cho dự án mới
+- ✅ Migration name rõ ràng
+- ✅ Timestamps cho mọi Entity
+- ✅ Navigation properties
+- ✅ Indexes cho performance
+
+---
+
+# 🧪 10. MINI TEST
 
 1. **Code First có nghĩa là gì?**
    - A. Viết code SQL trước

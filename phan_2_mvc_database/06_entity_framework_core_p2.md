@@ -770,7 +770,342 @@ public async Task<Order> CreateOrderAsync(CreateOrderRequest request)
 
 ---
 
-# 🧪 MINI TEST
+## ❌ 6. CÁC LỖI THƯỜNG GẶP
+
+### ❌ Lỗi 1: N+1 Query Problem
+
+```csharp
+// ❌ Vấn đề: N+1 queries
+var orders = await _context.Orders.ToListAsync();
+foreach (var order in orders)
+{
+    var items = await _context.OrderItems
+        .Where(oi => oi.OrderId == order.Id)
+        .ToListAsync(); // Query cho mỗi order!
+}
+
+// ✅ Giải pháp: Eager Loading
+var orders = await _context.Orders
+    .Include(o => o.OrderItems)
+    .ThenInclude(oi => oi.Product)
+    .ToListAsync();
+```
+
+**🔍 Giải thích:** N+1 problem xảy ra khi load related data trong loop. Dùng `Include()` để eager load.
+
+---
+
+### ❌ Lỗi 2: Tracking nhiều entities không cần thiết
+
+```csharp
+// ❌ Vấn đề: Tracking tất cả entities (chậm)
+var products = await _context.Products.ToListAsync(); // Tracked
+
+// ✅ Giải pháp: AsNoTracking cho read-only
+var products = await _context.Products
+    .AsNoTracking()
+    .ToListAsync(); // Không track, nhanh hơn
+```
+
+**🔍 Giải thích:** `AsNoTracking()` tắt change tracking, tăng performance cho read-only queries.
+
+---
+
+### ❌ Lỗi 3: SaveChanges không được gọi
+
+```csharp
+// ❌ Vấn đề: Thêm entity nhưng quên SaveChanges
+_context.Products.Add(product);
+// Quên: await _context.SaveChangesAsync();
+// Dữ liệu không được lưu!
+
+// ✅ Giải pháp: Luôn gọi SaveChanges
+_context.Products.Add(product);
+await _context.SaveChangesAsync(); // ✅
+```
+
+**🔍 Giải thích:** `Add()` chỉ đánh dấu entity để thêm. Phải gọi `SaveChangesAsync()` để lưu vào database.
+
+---
+
+### ❌ Lỗi 4: Update không hoạt động
+
+```csharp
+// ❌ Vấn đề: Update entity không được track
+var product = new Product { Id = 1, Name = "New Name" };
+_context.Products.Update(product); // Có thể không hoạt động đúng
+
+// ✅ Giải pháp: Load entity trước, rồi update
+var product = await _context.Products.FindAsync(1);
+product.Name = "New Name";
+await _context.SaveChangesAsync(); // ✅
+```
+
+**🔍 Giải thích:** Entity phải được track để update. Load từ database trước khi update.
+
+---
+
+### ❌ Lỗi 5: Cascade delete không mong muốn
+
+```csharp
+// ❌ Vấn đề: Xóa Category xóa luôn Products
+public class Category
+{
+    public ICollection<Product> Products { get; set; }
+}
+// OnDelete(DeleteBehavior.Cascade) → Xóa Category xóa Products
+
+// ✅ Giải pháp: Restrict delete
+modelBuilder.Entity<Product>()
+    .HasOne(p => p.Category)
+    .WithMany(c => c.Products)
+    .OnDelete(DeleteBehavior.Restrict); // Không cho xóa nếu có Products
+```
+
+**🔍 Giải thích:** Cascade delete có thể xóa dữ liệu không mong muốn. Dùng Restrict để bảo vệ.
+
+---
+
+## 🎯 7. CASE STUDY / VÍ DỤ THỰC TẾ
+
+### Case Study 1: Product Service với CRUD đầy đủ
+
+**Yêu cầu:** Tạo service quản lý sản phẩm với CRUD, search, pagination.
+
+```csharp
+public interface IProductService
+{
+    Task<PagedResult<ProductDto>> GetProductsAsync(int page, int pageSize, string? search);
+    Task<ProductDto?> GetProductAsync(int id);
+    Task<ProductDto> CreateProductAsync(CreateProductRequest request);
+    Task<ProductDto> UpdateProductAsync(int id, UpdateProductRequest request);
+    Task<bool> DeleteProductAsync(int id);
+}
+
+public class ProductService : IProductService
+{
+    private readonly AppDbContext _context;
+    private readonly IMapper _mapper;
+    
+    public ProductService(AppDbContext context, IMapper mapper)
+    {
+        _context = context;
+        _mapper = mapper;
+    }
+    
+    // Read với pagination và search
+    public async Task<PagedResult<ProductDto>> GetProductsAsync(
+        int page, 
+        int pageSize, 
+        string? search)
+    {
+        var query = _context.Products
+            .Include(p => p.Category)
+            .AsNoTracking(); // Read-only
+        
+        // Filter
+        if (!string.IsNullOrEmpty(search))
+        {
+            query = query.Where(p => 
+                p.Name.Contains(search) || 
+                p.Description!.Contains(search));
+        }
+        
+        // Count total
+        var totalCount = await query.CountAsync();
+        
+        // Pagination
+        var products = await query
+            .OrderBy(p => p.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+        
+        return new PagedResult<ProductDto>
+        {
+            Items = _mapper.Map<List<ProductDto>>(products),
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+    
+    // Read by Id với related data
+    public async Task<ProductDto?> GetProductAsync(int id)
+    {
+        var product = await _context.Products
+            .Include(p => p.Category)
+            .Include(p => p.OrderItems)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id);
+        
+        return product == null ? null : _mapper.Map<ProductDto>(product);
+    }
+    
+    // Create
+    public async Task<ProductDto> CreateProductAsync(CreateProductRequest request)
+    {
+        // Validate Category exists
+        var category = await _context.Categories.FindAsync(request.CategoryId);
+        if (category == null)
+            throw new NotFoundException("Category not found");
+        
+        var product = _mapper.Map<Product>(request);
+        product.CreatedAt = DateTime.UtcNow;
+        
+        _context.Products.Add(product);
+        await _context.SaveChangesAsync();
+        
+        // Load related data
+        await _context.Entry(product)
+            .Reference(p => p.Category)
+            .LoadAsync();
+        
+        return _mapper.Map<ProductDto>(product);
+    }
+    
+    // Update
+    public async Task<ProductDto> UpdateProductAsync(int id, UpdateProductRequest request)
+    {
+        var product = await _context.Products.FindAsync(id);
+        if (product == null)
+            throw new NotFoundException("Product not found");
+        
+        // Update properties
+        product.Name = request.Name;
+        product.Description = request.Description;
+        product.Price = request.Price;
+        product.Stock = request.Stock;
+        product.UpdatedAt = DateTime.UtcNow;
+        
+        await _context.SaveChangesAsync();
+        
+        // Reload with related data
+        await _context.Entry(product)
+            .Reference(p => p.Category)
+            .LoadAsync();
+        
+        return _mapper.Map<ProductDto>(product);
+    }
+    
+    // Delete
+    public async Task<bool> DeleteProductAsync(int id)
+    {
+        var product = await _context.Products.FindAsync(id);
+        if (product == null)
+            return false;
+        
+        // Soft delete
+        product.IsActive = false;
+        product.UpdatedAt = DateTime.UtcNow;
+        
+        // Hoặc hard delete
+        // _context.Products.Remove(product);
+        
+        await _context.SaveChangesAsync();
+        return true;
+    }
+}
+```
+
+**Best practices:**
+- Eager loading với Include
+- AsNoTracking cho read-only
+- Pagination và search
+- Soft delete thay vì hard delete
+- Exception handling
+
+---
+
+## ✅ 8. BEST PRACTICES
+
+### 8.1. CRUD Best Practices
+
+```csharp
+// ✅ Đúng: Async/await cho tất cả operations
+public async Task<Product> CreateAsync(Product product)
+{
+    _context.Products.Add(product);
+    await _context.SaveChangesAsync();
+    return product;
+}
+
+// ✅ Đúng: Eager loading khi cần
+var product = await _context.Products
+    .Include(p => p.Category)
+    .FirstOrDefaultAsync(p => p.Id == id);
+
+// ✅ Đúng: AsNoTracking cho read-only
+var products = await _context.Products
+    .AsNoTracking()
+    .ToListAsync();
+```
+
+### 8.2. Performance Best Practices
+
+```csharp
+// ✅ Đúng: Select chỉ fields cần thiết
+var productNames = await _context.Products
+    .Select(p => p.Name)
+    .ToListAsync();
+
+// ✅ Đúng: Pagination
+var products = await _context.Products
+    .Skip((page - 1) * pageSize)
+    .Take(pageSize)
+    .ToListAsync();
+
+// ❌ Sai: Load tất cả rồi filter
+var all = await _context.Products.ToListAsync();
+var filtered = all.Where(p => p.Price > 100).ToList(); // ❌
+```
+
+### 8.3. Relationships Best Practices
+
+```csharp
+// ✅ Đúng: Cấu hình cascade delete phù hợp
+modelBuilder.Entity<OrderItem>()
+    .HasOne(oi => oi.Order)
+    .WithMany(o => o.OrderItems)
+    .OnDelete(DeleteBehavior.Cascade); // Xóa OrderItem khi xóa Order
+
+modelBuilder.Entity<Product>()
+    .HasOne(p => p.Category)
+    .WithMany(c => c.Products)
+    .OnDelete(DeleteBehavior.Restrict); // Không cho xóa Category nếu có Product
+```
+
+---
+
+# 📝 9. QUICK NOTES
+
+### CRUD Operations:
+- **Create**: `Add()` + `SaveChangesAsync()`
+- **Read**: `ToListAsync()`, `FirstOrDefaultAsync()`, `FindAsync()`
+- **Update**: Load entity → Modify → `SaveChangesAsync()`
+- **Delete**: `Remove()` + `SaveChangesAsync()` hoặc soft delete
+
+### Loading Strategies:
+- **Eager Loading**: `Include()` - Load ngay
+- **Lazy Loading**: Tự động load khi truy cập (cần cấu hình)
+- **Explicit Loading**: `LoadAsync()` - Load thủ công
+
+### Performance:
+- `AsNoTracking()`: Tắt tracking cho read-only
+- `Select()`: Chỉ load fields cần thiết
+- Pagination: `Skip()` + `Take()`
+- Indexes: Tăng tốc query
+
+### Best Practices:
+- ✅ Async/await cho tất cả operations
+- ✅ Eager loading tránh N+1
+- ✅ AsNoTracking cho read-only
+- ✅ Soft delete thay vì hard delete
+- ✅ Pagination cho danh sách lớn
+
+---
+
+# 🧪 10. MINI TEST
 
 1. **Eager Loading dùng method nào?**
    - A. Load()

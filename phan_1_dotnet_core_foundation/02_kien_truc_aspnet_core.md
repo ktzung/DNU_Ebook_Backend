@@ -980,7 +980,430 @@ app.UseMiddleware<PerformanceMiddleware>();
 
 ---
 
-# 🧪 MINI TEST
+## ❌ 6. CÁC LỖI THƯỜNG GẶP
+
+### ❌ Lỗi 1: Đăng ký service với lifetime sai
+
+```csharp
+// ❌ Vấn đề: DbContext dùng Singleton (sai!)
+builder.Services.AddSingleton<AppDbContext>(); // ❌ DbContext không thread-safe
+
+// ✅ Giải pháp: Dùng Scoped cho DbContext
+builder.Services.AddDbContext<AppDbContext>(options => 
+    options.UseSqlServer(connectionString)); // ✅ Mặc định là Scoped
+```
+
+**🔍 Giải thích:** DbContext không thread-safe, phải dùng Scoped (mỗi request 1 instance). Singleton sẽ gây lỗi khi nhiều requests đồng thời.
+
+---
+
+### ❌ Lỗi 2: Circular Dependency
+
+```csharp
+// ❌ Vấn đề: Service A phụ thuộc B, B phụ thuộc A
+public class ServiceA
+{
+    public ServiceA(ServiceB b) { }
+}
+
+public class ServiceB
+{
+    public ServiceB(ServiceA a) { } // Circular dependency!
+}
+
+// ✅ Giải pháp: Tách interface hoặc refactor
+public interface IServiceA { }
+public class ServiceA : IServiceA
+{
+    public ServiceA(IServiceB b) { }
+}
+```
+
+**🔍 Giải thích:** Circular dependency gây lỗi khi DI container tạo service. Tách interface hoặc refactor để phá vỡ vòng lặp.
+
+---
+
+### ❌ Lỗi 3: Middleware sai thứ tự
+
+```csharp
+// ❌ Vấn đề: UseAuthorization trước UseAuthentication
+app.UseAuthorization(); // ❌ Phải có authentication trước
+app.UseAuthentication();
+
+// ✅ Giải pháp: Đúng thứ tự
+app.UseAuthentication(); // ✅ Trước
+app.UseAuthorization(); // ✅ Sau
+```
+
+**🔍 Giải thích:** Phải authenticate trước khi authorize. Thứ tự middleware rất quan trọng.
+
+---
+
+### ❌ Lỗi 4: Không dispose DbContext
+
+```csharp
+// ❌ Vấn đề: Tạo DbContext thủ công, không dispose
+public void ProcessData()
+{
+    var db = new AppDbContext(); // ❌ Không dispose
+    var products = db.Products.ToList();
+}
+
+// ✅ Giải pháp: Dùng DI, tự động dispose
+public class ProductService
+{
+    private readonly AppDbContext _db;
+    public ProductService(AppDbContext db) { _db = db; } // ✅ Tự động dispose
+}
+```
+
+**🔍 Giải thích:** DbContext cần dispose để giải phóng connection. DI container tự động dispose khi request kết thúc.
+
+---
+
+### ❌ Lỗi 5: Configuration không được load
+
+```csharp
+// ❌ Vấn đề: Đọc config trước khi builder.Build()
+var builder = WebApplication.CreateBuilder(args);
+var connectionString = builder.Configuration["ConnectionStrings:Default"]; // ✅ OK
+var app = builder.Build();
+var config = app.Configuration["ConnectionStrings:Default"]; // ✅ Cũng OK
+
+// ❌ Nhưng nếu thay đổi config sau Build(), không có hiệu lực
+```
+
+**🔍 Giải thích:** Configuration được load khi `CreateBuilder()`, sau đó không thay đổi. Dùng IConfiguration để đọc.
+
+---
+
+### ❌ Lỗi 6: Options Pattern không validate
+
+```csharp
+// ❌ Vấn đề: Không validate config
+builder.Services.Configure<JwtSettings>(config.GetSection("JwtSettings"));
+
+// ✅ Giải pháp: Validate khi startup
+builder.Services.AddOptions<JwtSettings>()
+    .Bind(config.GetSection("JwtSettings"))
+    .ValidateDataAnnotations()
+    .ValidateOnStart(); // ✅ Validate ngay khi start
+```
+
+**🔍 Giải thích:** Validate config khi startup để phát hiện lỗi sớm, không đợi đến khi dùng.
+
+---
+
+## 🎯 7. CASE STUDY / VÍ DỤ THỰC TẾ
+
+### Case Study 1: Multi-layer Architecture với DI
+
+**Yêu cầu:** Xây dựng API với Repository Pattern và Service Layer.
+
+```csharp
+// 1. Repository Interface
+public interface IProductRepository
+{
+    Task<List<Product>> GetAllAsync();
+    Task<Product?> GetByIdAsync(int id);
+    Task<Product> CreateAsync(Product product);
+}
+
+// 2. Repository Implementation
+public class ProductRepository : IProductRepository
+{
+    private readonly AppDbContext _db;
+    
+    public ProductRepository(AppDbContext db)
+    {
+        _db = db;
+    }
+    
+    public async Task<List<Product>> GetAllAsync()
+    {
+        return await _db.Products.ToListAsync();
+    }
+    
+    public async Task<Product?> GetByIdAsync(int id)
+    {
+        return await _db.Products.FindAsync(id);
+    }
+    
+    public async Task<Product> CreateAsync(Product product)
+    {
+        _db.Products.Add(product);
+        await _db.SaveChangesAsync();
+        return product;
+    }
+}
+
+// 3. Service Layer
+public interface IProductService
+{
+    Task<List<ProductDto>> GetProductsAsync();
+    Task<ProductDto?> GetProductAsync(int id);
+    Task<ProductDto> CreateProductAsync(CreateProductRequest request);
+}
+
+public class ProductService : IProductService
+{
+    private readonly IProductRepository _repository;
+    private readonly IMapper _mapper; // AutoMapper
+    
+    public ProductService(IProductRepository repository, IMapper mapper)
+    {
+        _repository = repository;
+        _mapper = mapper;
+    }
+    
+    public async Task<List<ProductDto>> GetProductsAsync()
+    {
+        var products = await _repository.GetAllAsync();
+        return _mapper.Map<List<ProductDto>>(products);
+    }
+    
+    public async Task<ProductDto?> GetProductAsync(int id)
+    {
+        var product = await _repository.GetByIdAsync(id);
+        return product == null ? null : _mapper.Map<ProductDto>(product);
+    }
+    
+    public async Task<ProductDto> CreateProductAsync(CreateProductRequest request)
+    {
+        var product = _mapper.Map<Product>(request);
+        var created = await _repository.CreateAsync(product);
+        return _mapper.Map<ProductDto>(created);
+    }
+}
+
+// 4. Controller
+[ApiController]
+[Route("api/[controller]")]
+public class ProductsController : ControllerBase
+{
+    private readonly IProductService _service;
+    
+    public ProductsController(IProductService service)
+    {
+        _service = service;
+    }
+    
+    [HttpGet]
+    public async Task<ActionResult<List<ProductDto>>> GetProducts()
+    {
+        var products = await _service.GetProductsAsync();
+        return Ok(products);
+    }
+}
+
+// 5. Program.cs - Đăng ký services
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(connectionString));
+
+builder.Services.AddScoped<IProductRepository, ProductRepository>();
+builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddAutoMapper(typeof(Program));
+```
+
+**Best practices:**
+- Tách Repository và Service layer
+- Dùng Interface cho loose coupling
+- DI tự động inject dependencies
+- Scoped lifetime cho DbContext và services
+
+---
+
+### Case Study 2: Custom Middleware cho Request Logging và Error Handling
+
+**Yêu cầu:** Tạo middleware log requests và handle errors globally.
+
+```csharp
+// 1. Request Logging Middleware
+public class RequestLoggingMiddleware
+{
+    private readonly RequestDelegate _next;
+    private readonly ILogger<RequestLoggingMiddleware> _logger;
+    
+    public RequestLoggingMiddleware(RequestDelegate next, ILogger<RequestLoggingMiddleware> logger)
+    {
+        _next = next;
+        _logger = logger;
+    }
+    
+    public async Task InvokeAsync(HttpContext context)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var requestPath = context.Request.Path;
+        var requestMethod = context.Request.Method;
+        
+        _logger.LogInformation($"Request: {requestMethod} {requestPath}");
+        
+        try
+        {
+            await _next(context);
+        }
+        finally
+        {
+            stopwatch.Stop();
+            var statusCode = context.Response.StatusCode;
+            _logger.LogInformation(
+                $"Response: {requestMethod} {requestPath} - {statusCode} - {stopwatch.ElapsedMilliseconds}ms");
+        }
+    }
+}
+
+// 2. Global Exception Handler Middleware
+public class GlobalExceptionMiddleware
+{
+    private readonly RequestDelegate _next;
+    private readonly ILogger<GlobalExceptionMiddleware> _logger;
+    
+    public GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExceptionMiddleware> logger)
+    {
+        _next = next;
+        _logger = logger;
+    }
+    
+    public async Task InvokeAsync(HttpContext context)
+    {
+        try
+        {
+            await _next(context);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unhandled exception occurred");
+            await HandleExceptionAsync(context, ex);
+        }
+    }
+    
+    private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+    {
+        context.Response.ContentType = "application/json";
+        context.Response.StatusCode = exception switch
+        {
+            NotFoundException => StatusCodes.Status404NotFound,
+            ValidationException => StatusCodes.Status400BadRequest,
+            _ => StatusCodes.Status500InternalServerError
+        };
+        
+        var response = new ErrorResponse
+        {
+            StatusCode = context.Response.StatusCode,
+            Message = exception.Message,
+            Details = context.RequestServices.GetService<IWebHostEnvironment>()?.IsDevelopment() == true
+                ? exception.ToString()
+                : null
+        };
+        
+        return context.Response.WriteAsync(JsonSerializer.Serialize(response));
+    }
+}
+
+// 3. Program.cs
+var app = builder.Build();
+
+// Exception handling phải đặt đầu tiên
+app.UseMiddleware<GlobalExceptionMiddleware>();
+app.UseMiddleware<RequestLoggingMiddleware>();
+
+app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();
+```
+
+**Giải thích:**
+- Middleware xử lý request/response
+- Global exception handler bắt mọi exception
+- Logging middleware track performance
+- Thứ tự middleware rất quan trọng
+
+---
+
+## ✅ 8. BEST PRACTICES
+
+### 8.1. DI Best Practices
+
+```csharp
+// ✅ Đúng: Dùng Interface
+public interface IEmailService { }
+public class EmailService : IEmailService { }
+builder.Services.AddScoped<IEmailService, EmailService>();
+
+// ✅ Đúng: Lifetime phù hợp
+builder.Services.AddSingleton<IConfiguration>(); // Config không đổi
+builder.Services.AddScoped<AppDbContext>(); // Mỗi request 1 instance
+builder.Services.AddTransient<IValidator>(); // Mỗi lần inject tạo mới
+
+// ❌ Sai: DbContext dùng Singleton
+builder.Services.AddSingleton<AppDbContext>(); // ❌ Không thread-safe
+```
+
+### 8.2. Configuration Best Practices
+
+```csharp
+// ✅ Đúng: Options Pattern
+builder.Services.Configure<JwtSettings>(config.GetSection("JwtSettings"));
+builder.Services.AddOptions<JwtSettings>()
+    .Bind(config.GetSection("JwtSettings"))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+// ✅ Đúng: Environment-specific config
+if (app.Environment.IsDevelopment())
+{
+    // Development settings
+}
+else
+{
+    // Production settings
+}
+```
+
+### 8.3. Middleware Best Practices
+
+```csharp
+// ✅ Đúng: Thứ tự middleware
+app.UseExceptionHandler(); // 1. Exception handling đầu tiên
+app.UseHttpsRedirection(); // 2. HTTPS
+app.UseStaticFiles(); // 3. Static files
+app.UseRouting(); // 4. Routing
+app.UseAuthentication(); // 5. Authentication
+app.UseAuthorization(); // 6. Authorization
+app.MapControllers(); // 7. Endpoints
+
+// ✅ Đúng: Conditional middleware
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+```
+
+### 8.4. Service Registration Best Practices
+
+```csharp
+// ✅ Đúng: Extension methods để tổ chức
+public static class ServiceCollectionExtensions
+{
+    public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+    {
+        services.AddScoped<IProductService, ProductService>();
+        services.AddScoped<IOrderService, OrderService>();
+        return services;
+    }
+}
+
+// Program.cs
+builder.Services.AddApplicationServices();
+```
+
+---
+
+# 🧪 9. MINI TEST
 
 1. **Dependency Injection có mấy loại lifetime?**
    - A. 2 (Transient, Singleton)
@@ -1013,7 +1436,53 @@ app.UseMiddleware<PerformanceMiddleware>();
 
 ---
 
-# 📌 TÓM TẮT CHƯƠNG
+# 📝 10. QUICK NOTES
+
+### Dependency Injection:
+- **Transient**: Tạo mới mỗi lần inject
+- **Scoped**: Một instance per request (dùng cho DbContext)
+- **Singleton**: Một instance cho toàn app (dùng cho services stateless)
+
+### Configuration:
+- `appsettings.json`: Config chung
+- `appsettings.{Environment}.json`: Config theo environment
+- Options Pattern: Type-safe configuration
+- Environment Variables: Override config
+
+### Middleware Pipeline:
+- Thứ tự quan trọng!
+- Exception handling đầu tiên
+- Authentication trước Authorization
+- Routing trước Endpoints
+
+### Program.cs Structure:
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+// 1. Configuration
+builder.Services.AddControllers();
+builder.Services.AddDbContext<AppDbContext>();
+
+var app = builder.Build();
+// 2. Middleware Pipeline
+app.UseExceptionHandler();
+app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();
+```
+
+### Best Practices:
+- ✅ Dùng Interface cho DI
+- ✅ Scoped cho DbContext
+- ✅ Options Pattern cho config
+- ✅ Extension methods để tổ chức services
+- ✅ Global exception handler
+
+---
+
+# 📌 11. TÓM TẮT CHƯƠNG
 
 ✅ ASP.NET Core là framework hiện đại, đa nền tảng  
 ✅ **Dependency Injection** là trái tim (3 lifetimes: Transient, Scoped, Singleton)  

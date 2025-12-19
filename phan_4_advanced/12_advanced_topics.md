@@ -703,7 +703,216 @@ public async Task CreateOrderAsync(CreateOrderRequest request)
 
 ---
 
-# 🧪 MINI TEST
+## ❌ 4. CÁC LỖI THƯỜNG GẶP
+
+### ❌ Lỗi 1: Cache không được invalidate
+
+```csharp
+// ❌ Vấn đề: Cache cũ sau khi update
+public async Task UpdateProductAsync(int id, Product product)
+{
+    _context.Products.Update(product);
+    await _context.SaveChangesAsync();
+    // Quên xóa cache → Cache vẫn có dữ liệu cũ
+}
+
+// ✅ Giải pháp: Invalidate cache sau khi update
+public async Task UpdateProductAsync(int id, Product product)
+{
+    _context.Products.Update(product);
+    await _context.SaveChangesAsync();
+    
+    _cache.Remove($"product_{id}"); // ✅ Xóa cache
+    _cache.Remove("products_list"); // ✅ Xóa list cache
+}
+```
+
+**🔍 Giải thích:** Cache phải được invalidate khi dữ liệu thay đổi, nếu không sẽ trả về dữ liệu cũ.
+
+---
+
+### ❌ Lỗi 2: Log quá nhiều thông tin nhạy cảm
+
+```csharp
+// ❌ Vấn đề: Log password, credit card
+_logger.LogInformation("User login: {Email}, Password: {Password}", 
+    email, password); // ❌ Nguy hiểm!
+
+// ✅ Giải pháp: Không log thông tin nhạy cảm
+_logger.LogInformation("User login attempt: {Email}", email); // ✅
+```
+
+**🔍 Giải thích:** Không bao giờ log password, credit card, tokens. Chỉ log thông tin cần thiết.
+
+---
+
+### ❌ Lỗi 3: Exception không được handle
+
+```csharp
+// ❌ Vấn đề: Exception leak ra client
+[HttpGet("{id}")]
+public async Task<ActionResult<Product>> GetProduct(int id)
+{
+    var product = await _service.GetProductAsync(id); // Có thể throw
+    return Ok(product);
+}
+
+// ✅ Giải pháp: Global exception handler
+public class GlobalExceptionMiddleware
+{
+    public async Task InvokeAsync(HttpContext context)
+    {
+        try
+        {
+            await _next(context);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unhandled exception");
+            await HandleExceptionAsync(context, ex);
+        }
+    }
+}
+```
+
+**🔍 Giải thích:** Exception phải được handle để không leak thông tin nhạy cảm ra client.
+
+---
+
+## 🎯 5. CASE STUDY / VÍ DỤ THỰC TẾ
+
+### Case Study 1: Production-Ready Application
+
+**Yêu cầu:** Cấu hình ứng dụng sẵn sàng cho production với caching, logging, error handling.
+
+```csharp
+// Program.cs - Production configuration
+var builder = WebApplication.CreateBuilder(args);
+
+// 1. Caching
+builder.Services.AddMemoryCache();
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration.GetConnectionString("Redis");
+});
+
+// 2. Logging với Serilog
+builder.Host.UseSerilog((context, config) =>
+{
+    config.ReadFrom.Configuration(context.Configuration)
+          .Enrich.FromLogContext()
+          .WriteTo.Console()
+          .WriteTo.File("logs/app-.txt", rollingInterval: RollingInterval.Day)
+          .WriteTo.Seq("http://localhost:5341");
+});
+
+// 3. Health Checks
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>()
+    .AddSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
+    .AddRedis(builder.Configuration.GetConnectionString("Redis"));
+
+// 4. Global Exception Handler
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
+var app = builder.Build();
+
+// Middleware
+app.UseExceptionHandler();
+app.UseSerilogRequestLogging();
+app.UseHealthChecks("/health");
+
+app.Run();
+```
+
+---
+
+## ✅ 6. BEST PRACTICES
+
+### 6.1. Caching Best Practices
+
+```csharp
+// ✅ Đúng: Cache key rõ ràng
+var cacheKey = $"product_{id}";
+var cacheKey = $"products_page_{page}_size_{pageSize}";
+
+// ✅ Đúng: Set expiration
+_cache.Set(key, data, TimeSpan.FromMinutes(10));
+
+// ✅ Đúng: Invalidate khi update
+_cache.Remove(key);
+```
+
+### 6.2. Logging Best Practices
+
+```csharp
+// ✅ Đúng: Log levels phù hợp
+_logger.LogTrace("Detailed trace");
+_logger.LogDebug("Debug info");
+_logger.LogInformation("General info");
+_logger.LogWarning("Warning");
+_logger.LogError(ex, "Error occurred");
+_logger.LogCritical(ex, "Critical error");
+
+// ✅ Đúng: Structured logging
+_logger.LogInformation("User {UserId} created order {OrderId}", 
+    userId, orderId);
+```
+
+### 6.3. Error Handling Best Practices
+
+```csharp
+// ✅ Đúng: Global exception handler
+app.UseExceptionHandler();
+
+// ✅ Đúng: Custom error responses
+catch (NotFoundException ex)
+{
+    return NotFound(new { message = ex.Message });
+}
+catch (ValidationException ex)
+{
+    return BadRequest(new { message = ex.Message, errors = ex.Errors });
+}
+```
+
+---
+
+# 📝 7. QUICK NOTES
+
+### Caching:
+- **In-Memory**: `AddMemoryCache()` - Nhanh, mất khi restart
+- **Redis**: Distributed cache - Shared giữa nhiều instances
+- **Cache Keys**: Rõ ràng, có namespace
+- **Expiration**: Set thời gian hợp lý
+
+### Logging:
+- **Serilog**: Structured logging
+- **Log Levels**: Trace, Debug, Info, Warning, Error, Critical
+- **Sinks**: Console, File, Database, Seq, etc.
+
+### Error Handling:
+- **Global Exception Handler**: Xử lý tập trung
+- **Problem Details**: Standard error format
+- **Logging**: Log mọi exception
+
+### Health Checks:
+- **Basic**: `/health` endpoint
+- **Detailed**: Check DB, Redis, external services
+- **UI**: `/health/ready`, `/health/live`
+
+### Best Practices:
+- ✅ Cache với expiration
+- ✅ Invalidate cache khi update
+- ✅ Structured logging
+- ✅ Global exception handler
+- ✅ Health checks
+- ✅ Không log thông tin nhạy cảm
+
+---
+
+# 🧪 8. MINI TEST
 
 1. **Caching có tác dụng gì?**
    - A. Tăng bảo mật

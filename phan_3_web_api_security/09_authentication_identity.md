@@ -646,7 +646,213 @@ public class ProfileController : Controller
 
 ---
 
-# 🧪 MINI TEST
+## ❌ 6. CÁC LỖI THƯỜNG GẶP
+
+### ❌ Lỗi 1: Password không được hash
+
+```csharp
+// ❌ Vấn đề: Lưu password plain text
+var user = new IdentityUser
+{
+    UserName = email,
+    PasswordHash = password // ❌ Plain text!
+};
+
+// ✅ Giải pháp: Dùng PasswordHasher hoặc UserManager
+var user = new IdentityUser { UserName = email, Email = email };
+var result = await _userManager.CreateAsync(user, password); // ✅ Tự động hash
+```
+
+**🔍 Giải thích:** Password phải được hash (bcrypt, PBKDF2) trước khi lưu. UserManager tự động hash.
+
+---
+
+### ❌ Lỗi 2: Quên cấu hình Identity trong Program.cs
+
+```csharp
+// ❌ Vấn đề: Tạo UserManager nhưng chưa đăng ký Identity
+var userManager = serviceProvider.GetService<UserManager<IdentityUser>>(); // null!
+
+// ✅ Giải pháp: Đăng ký Identity services
+builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
+{
+    options.Password.RequireDigit = true;
+    options.Password.RequiredLength = 8;
+})
+.AddEntityFrameworkStores<AppDbContext>();
+```
+
+**🔍 Giải thích:** Identity services phải được đăng ký trong DI container trước khi sử dụng.
+
+---
+
+### ❌ Lỗi 3: Không kiểm tra kết quả CreateAsync
+
+```csharp
+// ❌ Vấn đề: Không kiểm tra kết quả
+await _userManager.CreateAsync(user, password);
+// Có thể fail nhưng không biết lý do
+
+// ✅ Giải pháp: Luôn kiểm tra result
+var result = await _userManager.CreateAsync(user, password);
+if (!result.Succeeded)
+{
+    foreach (var error in result.Errors)
+    {
+        ModelState.AddModelError("", error.Description);
+    }
+    return View(model);
+}
+```
+
+**🔍 Giải thích:** `CreateAsync` trả về `IdentityResult` chứa thông tin lỗi. Phải kiểm tra để xử lý.
+
+---
+
+## 🎯 7. CASE STUDY / VÍ DỤ THỰC TẾ
+
+### Case Study 1: Authentication System hoàn chỉnh
+
+**Yêu cầu:** Tạo hệ thống đăng ký, đăng nhập, quản lý user với Identity.
+
+```csharp
+// AuthController.cs
+[ApiController]
+[Route("api/[controller]")]
+public class AuthController : ControllerBase
+{
+    private readonly UserManager<IdentityUser> _userManager;
+    private readonly SignInManager<IdentityUser> _signInManager;
+    private readonly ITokenService _tokenService;
+    
+    public AuthController(
+        UserManager<IdentityUser> userManager,
+        SignInManager<IdentityUser> signInManager,
+        ITokenService tokenService)
+    {
+        _userManager = userManager;
+        _signInManager = signInManager;
+        _tokenService = tokenService;
+    }
+    
+    // POST: api/auth/register
+    [HttpPost("register")]
+    public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+        
+        var user = new IdentityUser
+        {
+            UserName = request.Email,
+            Email = request.Email
+        };
+        
+        var result = await _userManager.CreateAsync(user, request.Password);
+        
+        if (!result.Succeeded)
+        {
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+        }
+        
+        // Assign default role
+        await _userManager.AddToRoleAsync(user, "Customer");
+        
+        // Generate token
+        var token = _tokenService.GenerateToken(user);
+        
+        return Ok(new AuthResponse
+        {
+            Token = token,
+            Email = user.Email,
+            UserId = user.Id
+        });
+    }
+    
+    // POST: api/auth/login
+    [HttpPost("login")]
+    public async Task<ActionResult<AuthResponse>> Login(LoginRequest request)
+    {
+        var user = await _userManager.FindByEmailAsync(request.Email);
+        if (user == null)
+        {
+            return Unauthorized(new { message = "Invalid credentials" });
+        }
+        
+        var result = await _signInManager.CheckPasswordSignInAsync(
+            user, request.Password, lockoutOnFailure: true);
+        
+        if (!result.Succeeded)
+        {
+            return Unauthorized(new { message = "Invalid credentials" });
+        }
+        
+        var token = _tokenService.GenerateToken(user);
+        
+        return Ok(new AuthResponse
+        {
+            Token = token,
+            Email = user.Email,
+            UserId = user.Id
+        });
+    }
+}
+```
+
+---
+
+## ✅ 8. BEST PRACTICES
+
+### 8.1. Password Best Practices
+
+```csharp
+// ✅ Đúng: Cấu hình password policy
+builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
+{
+    options.Password.RequireDigit = true;
+    options.Password.RequiredLength = 8;
+    options.Password.RequireUppercase = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireNonAlphanumeric = true;
+    
+    options.User.RequireUniqueEmail = true;
+    options.SignIn.RequireConfirmedEmail = false; // Set true cho production
+});
+```
+
+### 8.2. Security Best Practices
+
+```csharp
+// ✅ Đúng: Lockout sau nhiều lần sai password
+options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+options.Lockout.MaxFailedAccessAttempts = 5;
+options.Lockout.AllowedForNewUsers = true;
+```
+
+---
+
+# 📝 9. QUICK NOTES
+
+### Identity Components:
+- `UserManager<TUser>`: Quản lý users
+- `SignInManager<TUser>`: Xử lý sign in/out
+- `RoleManager<TRole>`: Quản lý roles
+
+### Authentication Methods:
+- Cookie-based: Cho web apps
+- JWT: Cho APIs, mobile apps
+- OAuth/OpenID: Third-party login
+
+### Best Practices:
+- ✅ Hash passwords (UserManager tự động)
+- ✅ Password policy mạnh
+- ✅ Account lockout
+- ✅ Email confirmation (production)
+- ✅ Two-factor authentication (2FA)
+
+---
+
+# 🧪 10. MINI TEST
 
 1. **Authentication là gì?**
    - A. Phân quyền

@@ -619,7 +619,244 @@ public async Task<IActionResult> Cancel(int id)
 
 ---
 
-# 🧪 MINI TEST
+## ❌ 5. CÁC LỖI THƯỜNG GẶP
+
+### ❌ Lỗi 1: Quên [Authorize] attribute
+
+```csharp
+// ❌ Vấn đề: API không được bảo vệ
+[HttpPost("create")]
+public IActionResult CreateProduct(ProductDto request)
+{
+    // Bất kỳ ai cũng có thể gọi API này!
+}
+
+// ✅ Giải pháp: Thêm [Authorize]
+[HttpPost("create")]
+[Authorize] // ✅ Chỉ user đã đăng nhập
+public IActionResult CreateProduct(ProductDto request)
+{
+    // ...
+}
+```
+
+**🔍 Giải thích:** Không có `[Authorize]`, API có thể được truy cập bởi bất kỳ ai. Phải thêm attribute để bảo vệ.
+
+---
+
+### ❌ Lỗi 2: Role không tồn tại
+
+```csharp
+// ❌ Vấn đề: Check role không tồn tại
+[Authorize(Roles = "SuperAdmin")] // Role chưa được tạo
+
+// ✅ Giải pháp: Tạo role trước khi dùng
+await _roleManager.CreateAsync(new IdentityRole("SuperAdmin"));
+// Hoặc check role tồn tại
+if (!await _roleManager.RoleExistsAsync("SuperAdmin"))
+{
+    await _roleManager.CreateAsync(new IdentityRole("SuperAdmin"));
+}
+```
+
+**🔍 Giải thích:** Role phải được tạo trong database trước khi sử dụng. Check `RoleExistsAsync` trước.
+
+---
+
+### ❌ Lỗi 3: Policy không được đăng ký
+
+```csharp
+// ❌ Vấn đề: Dùng policy chưa đăng ký
+[Authorize(Policy = "MinimumAge")] // Policy chưa được tạo
+
+// ✅ Giải pháp: Đăng ký policy trong Program.cs
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("MinimumAge", policy =>
+        policy.Requirements.Add(new MinimumAgeRequirement(18)));
+});
+```
+
+**🔍 Giải thích:** Policy phải được đăng ký trong `AddAuthorization` trước khi sử dụng.
+
+---
+
+## 🎯 6. CASE STUDY / VÍ DỤ THỰC TẾ
+
+### Case Study 1: Multi-level Authorization System
+
+**Yêu cầu:** Phân quyền cho Admin, Manager, User với các quyền khác nhau.
+
+```csharp
+// Program.cs - Đăng ký policies
+builder.Services.AddAuthorization(options =>
+{
+    // Admin có tất cả quyền
+    options.AddPolicy("AdminOnly", policy => 
+        policy.RequireRole("Admin"));
+    
+    // Admin hoặc Manager
+    options.AddPolicy("AdminOrManager", policy =>
+        policy.RequireRole("Admin", "Manager"));
+    
+    // User đã đăng nhập
+    options.AddPolicy("Authenticated", policy =>
+        policy.RequireAuthenticatedUser());
+    
+    // Custom policy: Minimum age
+    options.AddPolicy("AdultOnly", policy =>
+        policy.Requirements.Add(new MinimumAgeRequirement(18)));
+    
+    // Custom policy: Order owner
+    options.AddPolicy("OrderOwner", policy =>
+        policy.Requirements.Add(new OrderOwnerRequirement()));
+});
+
+// ProductsController.cs
+[ApiController]
+[Route("api/[controller]")]
+public class ProductsController : ControllerBase
+{
+    // Public: Ai cũng xem được
+    [HttpGet]
+    public async Task<ActionResult<List<ProductDto>>> GetProducts()
+    {
+        // ...
+    }
+    
+    // Authenticated: Phải đăng nhập
+    [HttpPost]
+    [Authorize(Policy = "Authenticated")]
+    public async Task<ActionResult<ProductDto>> CreateProduct(CreateProductRequest request)
+    {
+        // ...
+    }
+    
+    // Admin only: Chỉ Admin
+    [HttpPut("{id}")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<IActionResult> UpdateProduct(int id, UpdateProductRequest request)
+    {
+        // ...
+    }
+    
+    // Admin or Manager
+    [HttpDelete("{id}")]
+    [Authorize(Policy = "AdminOrManager")]
+    public async Task<IActionResult> DeleteProduct(int id)
+    {
+        // ...
+    }
+}
+
+// OrdersController.cs - Resource-based authorization
+[ApiController]
+[Route("api/[controller]")]
+public class OrdersController : ControllerBase
+{
+    private readonly IAuthorizationService _authorizationService;
+    
+    // User chỉ xem được order của mình
+    [HttpGet("{id}")]
+    [Authorize]
+    public async Task<ActionResult<OrderDto>> GetOrder(int id)
+    {
+        var order = await _orderService.GetOrderAsync(id);
+        if (order == null)
+            return NotFound();
+        
+        // Resource-based check
+        var authResult = await _authorizationService.AuthorizeAsync(
+            User, order, "OrderOwner");
+        
+        if (!authResult.Succeeded)
+            return Forbid();
+        
+        return Ok(order);
+    }
+}
+```
+
+**Best practices:**
+- Policies cho các quyền phức tạp
+- Resource-based cho quyền phụ thuộc resource
+- Role-based cho quyền đơn giản
+
+---
+
+## ✅ 7. BEST PRACTICES
+
+### 7.1. Authorization Best Practices
+
+```csharp
+// ✅ Đúng: Dùng Policy cho logic phức tạp
+[Authorize(Policy = "AdminOrManager")]
+
+// ✅ Đúng: Resource-based cho quyền phụ thuộc resource
+var authResult = await _authorizationService.AuthorizeAsync(User, resource, "PolicyName");
+
+// ✅ Đúng: Fail-safe (deny by default)
+[Authorize] // Mặc định deny, chỉ allow khi có quyền
+
+// ❌ Sai: Allow mọi người, check trong code
+public IActionResult Delete(int id)
+{
+    if (User.IsInRole("Admin")) // ❌ Không an toàn
+    {
+        // ...
+    }
+}
+```
+
+### 7.2. Security Best Practices
+
+```csharp
+// ✅ Đúng: Principle of least privilege
+[Authorize(Roles = "Admin")] // Chỉ Admin
+
+// ✅ Đúng: Validate ownership
+var authResult = await _authorizationService.AuthorizeAsync(
+    User, order, "OrderOwner");
+
+// ✅ Đúng: Log authorization failures
+if (!authResult.Succeeded)
+{
+    _logger.LogWarning("User {UserId} denied access to Order {OrderId}", 
+        UserId, orderId);
+    return Forbid();
+}
+```
+
+---
+
+# 📝 8. QUICK NOTES
+
+### Authorization Types:
+- **Role-based**: `[Authorize(Roles = "Admin")]`
+- **Claims-based**: `[Authorize(Policy = "PolicyName")]`
+- **Policy-based**: Custom logic trong Policy
+- **Resource-based**: Quyền phụ thuộc resource
+
+### Authorization Attributes:
+- `[Authorize]`: Phải đăng nhập
+- `[Authorize(Roles = "Admin")]`: Phải có role
+- `[Authorize(Policy = "PolicyName")]`: Phải thỏa policy
+- `[AllowAnonymous]`: Bỏ qua authorization
+
+### IAuthorizationService:
+- `AuthorizeAsync()`: Check quyền trong code
+- Dùng cho resource-based authorization
+- Linh hoạt hơn attributes
+
+### Best Practices:
+- ✅ Principle of least privilege
+- ✅ Policy cho logic phức tạp
+- ✅ Resource-based cho ownership
+- ✅ Log authorization failures
+
+---
+
+# 🧪 9. MINI TEST
 
 1. **Role-based vs Policy-based?**
    - A. Role đơn giản, Policy linh hoạt hơn

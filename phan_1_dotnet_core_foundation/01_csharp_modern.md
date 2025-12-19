@@ -170,37 +170,96 @@ public class ProductsController : ControllerBase
 
 ---
 
-## 2.4. Lỗi thường gặp
+## 2.4. ❌ CÁC LỖI THƯỜNG GẶP VỚI ASYNC/AWAIT
 
 ### ❌ Lỗi 1: Dùng .Result hoặc .Wait()
 
 ```csharp
-// KHÔNG BAO GIỜ làm thế này!
+// ❌ Vấn đề: Block thread, có thể gây deadlock
 var products = GetProductsAsync().Result; // Deadlock!
-```
+GetProductsAsync().Wait(); // Cũng block thread
 
-**Giải pháp:** Luôn dùng `await`
-
-```csharp
+// ✅ Giải pháp: Luôn dùng await
 var products = await GetProductsAsync(); // ✅
 ```
+
+**🔍 Giải thích:** `.Result` và `.Wait()` block thread hiện tại, có thể gây deadlock trong ASP.NET Core. Luôn dùng `await` trong async context.
+
+---
 
 ### ❌ Lỗi 2: Quên await
 
 ```csharp
+// ❌ Vấn đề: Trả về Task thay vì kết quả
 public async Task<List<Product>> GetProductsAsync()
 {
-    // Quên await → trả về Task chưa hoàn thành!
-    var products = _db.Products.ToListAsync(); // ❌
-    return products; // Lỗi compile
+    var products = _db.Products.ToListAsync(); // ❌ Trả về Task<List<Product>>
+    return products; // Lỗi compile: Cannot convert Task<List<Product>> to List<Product>
+}
+
+// ✅ Giải pháp: Thêm await
+public async Task<List<Product>> GetProductsAsync()
+{
+    var products = await _db.Products.ToListAsync(); // ✅ Trả về List<Product>
+    return products;
 }
 ```
 
-**Giải pháp:**
+**🔍 Giải thích:** Quên `await` sẽ trả về `Task<T>` thay vì `T`. Luôn dùng `await` trước async method.
+
+---
+
+### ❌ Lỗi 3: Async void (chỉ dùng cho event handlers)
 
 ```csharp
-var products = await _db.Products.ToListAsync(); // ✅
+// ❌ Vấn đề: Async void không thể catch exception
+public async void ProcessData()
+{
+    await SomeAsyncMethod(); // Exception sẽ crash app
+}
+
+// ✅ Giải pháp: Dùng async Task
+public async Task ProcessData()
+{
+    await SomeAsyncMethod(); // Exception có thể được catch
+}
 ```
+
+**🔍 Giải thích:** `async void` chỉ dùng cho event handlers. Với methods khác, luôn dùng `async Task`.
+
+---
+
+### ❌ Lỗi 4: Blocking async code trong sync method
+
+```csharp
+// ❌ Vấn đề: Block async code
+public void ProcessData()
+{
+    var result = GetDataAsync().Result; // Block thread
+}
+
+// ✅ Giải pháp: Làm method async
+public async Task ProcessData()
+{
+    var result = await GetDataAsync(); // Non-blocking
+}
+```
+
+**🔍 Giải thích:** Không block async code. Nếu cần dùng async, làm method async luôn.
+
+---
+
+### ❌ Lỗi 5: ConfigureAwait(false) không cần thiết trong ASP.NET Core
+
+```csharp
+// ❌ Vấn đề: ConfigureAwait(false) không cần trong ASP.NET Core
+var data = await GetDataAsync().ConfigureAwait(false);
+
+// ✅ Giải pháp: Bỏ ConfigureAwait (ASP.NET Core không có SynchronizationContext)
+var data = await GetDataAsync(); // ✅
+```
+
+**🔍 Giải thích:** ASP.NET Core không có SynchronizationContext, nên `ConfigureAwait(false)` không cần thiết (khác với .NET Framework).
 
 ---
 
@@ -698,7 +757,357 @@ public record CreateOrderRequest(int UserId, List<OrderItemDTO> Items);
 
 ---
 
-# 🧪 MINI TEST
+## 🎯 8. CASE STUDY / VÍ DỤ THỰC TẾ
+
+### Case Study 1: API Service với Async/Await
+
+**Yêu cầu:** Tạo service gọi nhiều API bên ngoài đồng thời và tổng hợp kết quả.
+
+```csharp
+public class ExternalApiService
+{
+    private readonly HttpClient _httpClient;
+    
+    public ExternalApiService(HttpClient httpClient)
+    {
+        _httpClient = httpClient;
+    }
+    
+    // Gọi nhiều API đồng thời
+    public async Task<CombinedData> GetCombinedDataAsync(int userId)
+    {
+        // Gọi 3 API đồng thời (parallel)
+        var userTask = GetUserAsync(userId);
+        var ordersTask = GetOrdersAsync(userId);
+        var preferencesTask = GetPreferencesAsync(userId);
+        
+        // Đợi tất cả hoàn thành
+        await Task.WhenAll(userTask, ordersTask, preferencesTask);
+        
+        return new CombinedData
+        {
+            User = await userTask,
+            Orders = await ordersTask,
+            Preferences = await preferencesTask
+        };
+    }
+    
+    private async Task<User> GetUserAsync(int userId)
+    {
+        var response = await _httpClient.GetAsync($"api/users/{userId}");
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<User>(json);
+    }
+    
+    private async Task<List<Order>> GetOrdersAsync(int userId)
+    {
+        var response = await _httpClient.GetAsync($"api/users/{userId}/orders");
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<Order>>(json);
+    }
+    
+    private async Task<Preferences> GetPreferencesAsync(int userId)
+    {
+        var response = await _httpClient.GetAsync($"api/users/{userId}/preferences");
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<Preferences>(json);
+    }
+}
+```
+
+**Giải thích:**
+- Sử dụng `Task.WhenAll` để gọi nhiều API đồng thời
+- Tăng hiệu suất đáng kể so với gọi tuần tự
+- Async/await không block thread
+
+---
+
+### Case Study 2: Data Processing với LINQ và Records
+
+**Yêu cầu:** Xử lý dữ liệu đơn hàng, tính toán thống kê, tạo DTOs.
+
+```csharp
+// Record cho DTO
+public record OrderSummaryDto(
+    int OrderId,
+    string CustomerName,
+    decimal Total,
+    int ItemCount,
+    DateTime OrderDate
+);
+
+public record CustomerStatsDto(
+    string CustomerName,
+    int TotalOrders,
+    decimal TotalSpent,
+    decimal AverageOrderValue
+);
+
+public class OrderService
+{
+    private readonly AppDbContext _db;
+    
+    public OrderService(AppDbContext db)
+    {
+        _db = db;
+    }
+    
+    // Lấy đơn hàng với LINQ và tạo DTOs
+    public async Task<List<OrderSummaryDto>> GetOrderSummariesAsync(
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        int? customerId = null)
+    {
+        var query = _db.Orders.AsQueryable();
+        
+        // Filter động
+        if (fromDate.HasValue)
+            query = query.Where(o => o.OrderDate >= fromDate.Value);
+        
+        if (toDate.HasValue)
+            query = query.Where(o => o.OrderDate <= toDate.Value);
+        
+        if (customerId.HasValue)
+            query = query.Where(o => o.CustomerId == customerId.Value);
+        
+        // Project sang DTO
+        var summaries = await query
+            .Select(o => new OrderSummaryDto(
+                o.Id,
+                o.Customer.Name,
+                o.Total,
+                o.Items.Count,
+                o.OrderDate
+            ))
+            .OrderByDescending(o => o.OrderDate)
+            .ToListAsync();
+        
+        return summaries;
+    }
+    
+    // Thống kê theo khách hàng
+    public async Task<List<CustomerStatsDto>> GetCustomerStatsAsync()
+    {
+        var stats = await _db.Orders
+            .GroupBy(o => new { o.CustomerId, o.Customer.Name })
+            .Select(g => new CustomerStatsDto(
+                g.Key.Name,
+                g.Count(),
+                g.Sum(o => o.Total),
+                g.Average(o => o.Total)
+            ))
+            .OrderByDescending(s => s.TotalSpent)
+            .ToListAsync();
+        
+        return stats;
+    }
+}
+```
+
+**Best practices:**
+- Dùng Records cho DTOs (immutable, value equality)
+- LINQ để filter và project dữ liệu
+- Async/await cho database operations
+- IQueryable để filter ở database
+
+---
+
+### Case Study 3: Nullable Reference Types trong API
+
+**Yêu cầu:** Tạo API an toàn với null checking.
+
+```csharp
+#nullable enable
+
+public class ProductService
+{
+    private readonly AppDbContext _db;
+    
+    public ProductService(AppDbContext db)
+    {
+        _db = db;
+    }
+    
+    // Method trả về nullable
+    public async Task<Product?> GetProductAsync(int id)
+    {
+        return await _db.Products.FindAsync(id);
+    }
+    
+    // Method với null checking
+    public async Task<ProductDto> GetProductDtoAsync(int id)
+    {
+        var product = await GetProductAsync(id);
+        
+        if (product == null)
+            throw new NotFoundException($"Product {id} not found");
+        
+        // Compiler biết product không null ở đây
+        return new ProductDto
+        {
+            Id = product.Id,
+            Name = product.Name,
+            Price = product.Price
+        };
+    }
+    
+    // Method với null-conditional
+    public async Task<string?> GetProductDescriptionAsync(int id)
+    {
+        var product = await GetProductAsync(id);
+        return product?.Description; // Trả về null nếu product null
+    }
+}
+
+// Controller
+[ApiController]
+[Route("api/[controller]")]
+public class ProductsController : ControllerBase
+{
+    private readonly ProductService _service;
+    
+    public ProductsController(ProductService service)
+    {
+        _service = service;
+    }
+    
+    [HttpGet("{id}")]
+    public async Task<ActionResult<ProductDto>> GetProduct(int id)
+    {
+        try
+        {
+            var product = await _service.GetProductDtoAsync(id);
+            return Ok(product);
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+}
+```
+
+**Giải thích:**
+- `#nullable enable` bật null checking
+- `?` đánh dấu nullable types
+- Compiler cảnh báo nếu không kiểm tra null
+- Code an toàn hơn, ít lỗi runtime
+
+---
+
+## ✅ 9. BEST PRACTICES
+
+### 9.1. Async/Await Best Practices
+
+```csharp
+// ✅ Đúng: Async all the way
+public async Task<List<Product>> GetProductsAsync()
+{
+    return await _db.Products.ToListAsync();
+}
+
+// ❌ Sai: Mix sync và async
+public List<Product> GetProducts()
+{
+    return _db.Products.ToListAsync().Result; // Block thread
+}
+
+// ✅ Đúng: Dùng Task.WhenAll cho parallel operations
+var task1 = GetData1Async();
+var task2 = GetData2Async();
+await Task.WhenAll(task1, task2);
+```
+
+### 9.2. LINQ Best Practices
+
+```csharp
+// ✅ Đúng: Filter ở database
+var products = await _db.Products
+    .Where(p => p.Price > 100)
+    .ToListAsync();
+
+// ❌ Sai: Load tất cả rồi filter
+var all = await _db.Products.ToListAsync();
+var filtered = all.Where(p => p.Price > 100).ToList();
+
+// ✅ Đúng: Select chỉ fields cần thiết
+var dtos = await _db.Products
+    .Select(p => new ProductDto { Id = p.Id, Name = p.Name })
+    .ToListAsync();
+```
+
+### 9.3. Records Best Practices
+
+```csharp
+// ✅ Đúng: Dùng record cho DTOs
+public record CreateProductRequest(string Name, decimal Price);
+
+// ✅ Đúng: Dùng record với init cho mutable DTOs
+public record ProductDto
+{
+    public int Id { get; init; }
+    public string Name { get; init; }
+    public decimal Price { get; init; }
+}
+
+// ❌ Sai: Dùng class cho simple DTOs (verbose)
+public class ProductDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public decimal Price { get; set; }
+    
+    // Phải override Equals, GetHashCode, etc.
+}
+```
+
+### 9.4. Nullable Reference Types Best Practices
+
+```csharp
+#nullable enable
+
+// ✅ Đúng: Đánh dấu nullable rõ ràng
+public string? GetOptionalName() { return null; }
+public string GetRequiredName() { return "Required"; }
+
+// ✅ Đúng: Kiểm tra null
+if (name != null)
+{
+    Console.WriteLine(name.Length); // Compiler biết không null
+}
+
+// ✅ Đúng: Null-conditional operator
+var length = name?.Length ?? 0;
+```
+
+### 9.5. Pattern Matching Best Practices
+
+```csharp
+// ✅ Đúng: Switch expression cho simple cases
+string GetGrade(int score) => score switch
+{
+    >= 90 => "A",
+    >= 80 => "B",
+    >= 70 => "C",
+    _ => "D"
+};
+
+// ✅ Đúng: Type pattern matching
+string Describe(object obj) => obj switch
+{
+    Product p => $"Product: {p.Name}",
+    Order o => $"Order: {o.Id}",
+    null => "null",
+    _ => "unknown"
+};
+```
+
+---
+
+# 🧪 10. MINI TEST
 
 1. **Async/Await** có tác dụng gì?
    - A. Làm code chạy nhanh hơn
@@ -728,7 +1137,44 @@ public record CreateOrderRequest(int UserId, List<OrderItemDTO> Items);
 
 ---
 
-# 📌 TÓM TẮT CHƯƠNG
+# 📝 11. QUICK NOTES
+
+### Async/Await:
+- `async Task<T>` cho methods trả về giá trị
+- `async Task` cho methods không trả về giá trị
+- `await` trước async method calls
+- Không dùng `.Result` hoặc `.Wait()`
+- `Task.WhenAll` cho parallel operations
+
+### LINQ:
+- `Where`: Filter
+- `Select`: Project/Transform
+- `OrderBy`: Sort
+- `GroupBy`: Group
+- `FirstOrDefault`: Lấy phần tử đầu (an toàn)
+- `ToListAsync`: Execute query (EF Core)
+
+### Records:
+- Immutable by default
+- Value equality
+- Perfect for DTOs
+- `with` expression để tạo copy
+
+### Nullable Reference Types:
+- `#nullable enable` bật checking
+- `string?` = nullable
+- `string` = non-nullable
+- Null-conditional: `obj?.Property`
+- Null-coalescing: `value ?? defaultValue`
+
+### Pattern Matching:
+- Switch expressions: `value switch { ... }`
+- Type patterns: `obj is Type t`
+- Property patterns: `obj is { Property: value }`
+
+---
+
+# 📌 12. TÓM TẮT CHƯƠNG
 
 ✅ **Async/Await** giúp Backend xử lý nhiều requests đồng thời  
 ✅ **LINQ** giúp xử lý dữ liệu ngắn gọn và rõ ràng  

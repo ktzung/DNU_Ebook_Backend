@@ -661,7 +661,271 @@ public class Product
 
 ---
 
-# 🧪 MINI TEST
+## ❌ 6. CÁC LỖI THƯỜNG GẶP
+
+### ❌ Lỗi 1: Quên kiểm tra ModelState.IsValid
+
+```csharp
+// ❌ Vấn đề: Không kiểm tra validation
+[HttpPost]
+public IActionResult Create(Product product)
+{
+    _db.Products.Add(product); // ❌ Có thể có dữ liệu không hợp lệ
+    _db.SaveChanges();
+    return RedirectToAction("Index");
+}
+
+// ✅ Giải pháp: Luôn kiểm tra ModelState
+[HttpPost]
+public IActionResult Create(Product product)
+{
+    if (!ModelState.IsValid)
+    {
+        return View(product); // Hiển thị lại form với errors
+    }
+    
+    _db.Products.Add(product);
+    _db.SaveChanges();
+    return RedirectToAction("Index");
+}
+```
+
+**🔍 Giải thích:** ModelState.IsValid kiểm tra tất cả validation rules. Quên kiểm tra có thể lưu dữ liệu không hợp lệ.
+
+---
+
+### ❌ Lỗi 2: Over-posting Attack
+
+```csharp
+// ❌ Vấn đề: Bind trực tiếp Entity, client có thể set IsAdmin
+public class User
+{
+    public string Name { get; set; }
+    public bool IsAdmin { get; set; } // ❌ Client có thể set = true
+}
+
+[HttpPost]
+public IActionResult Create(User user) // ❌ Over-posting!
+{
+    _db.Users.Add(user);
+    _db.SaveChanges();
+}
+
+// ✅ Giải pháp: Dùng ViewModel/DTO
+public class CreateUserRequest
+{
+    public string Name { get; set; } // Chỉ có fields cần thiết
+    // Không có IsAdmin
+}
+
+[HttpPost]
+public IActionResult Create(CreateUserRequest request)
+{
+    var user = new User { Name = request.Name, IsAdmin = false };
+    _db.Users.Add(user);
+    _db.SaveChanges();
+}
+```
+
+**🔍 Giải thích:** Bind trực tiếp Entity cho phép client set các property không mong muốn. Dùng ViewModel để kiểm soát.
+
+---
+
+### ❌ Lỗi 3: Validation không chạy
+
+```csharp
+// ❌ Vấn đề: Quên [ApiController] hoặc [Bind] attribute
+public class ProductsController : Controller
+{
+    [HttpPost]
+    public IActionResult Create(Product product) // Validation không chạy
+    {
+        // ModelState.IsValid luôn true
+    }
+}
+
+// ✅ Giải pháp: Đảm bảo validation được trigger
+[ApiController] // Tự động validate
+public class ProductsController : ControllerBase
+{
+    [HttpPost]
+    public IActionResult Create(Product product)
+    {
+        if (!ModelState.IsValid) // ✅ Validation chạy
+            return BadRequest(ModelState);
+    }
+}
+```
+
+**🔍 Giải thích:** [ApiController] tự động validate. Với MVC, cần đảm bảo validation attributes được áp dụng.
+
+---
+
+## 🎯 7. CASE STUDY / VÍ DỤ THỰC TẾ
+
+### Case Study 1: Form đăng ký với Validation đầy đủ
+
+**Yêu cầu:** Tạo form đăng ký với validation email, password strength, confirm password.
+
+```csharp
+// ViewModel
+public class RegisterViewModel
+{
+    [Required(ErrorMessage = "Email là bắt buộc")]
+    [EmailAddress(ErrorMessage = "Email không hợp lệ")]
+    [Display(Name = "Email")]
+    public string Email { get; set; } = string.Empty;
+    
+    [Required(ErrorMessage = "Mật khẩu là bắt buộc")]
+    [StringLength(100, MinimumLength = 8, ErrorMessage = "Mật khẩu phải từ 8-100 ký tự")]
+    [DataType(DataType.Password)]
+    [Display(Name = "Mật khẩu")]
+    public string Password { get; set; } = string.Empty;
+    
+    [Required(ErrorMessage = "Xác nhận mật khẩu là bắt buộc")]
+    [DataType(DataType.Password)]
+    [Display(Name = "Xác nhận mật khẩu")]
+    [Compare("Password", ErrorMessage = "Mật khẩu không khớp")]
+    public string ConfirmPassword { get; set; } = string.Empty;
+    
+    [Required(ErrorMessage = "Họ tên là bắt buộc")]
+    [StringLength(100, ErrorMessage = "Họ tên không quá 100 ký tự")]
+    [Display(Name = "Họ tên")]
+    public string FullName { get; set; } = string.Empty;
+    
+    [Range(18, 120, ErrorMessage = "Tuổi phải từ 18-120")]
+    [Display(Name = "Tuổi")]
+    public int? Age { get; set; }
+    
+    [Display(Name = "Tôi đồng ý với điều khoản")]
+    [MustBeTrue(ErrorMessage = "Bạn phải đồng ý với điều khoản")]
+    public bool AgreeToTerms { get; set; }
+}
+
+// Controller
+[HttpGet("register")]
+public IActionResult Register()
+{
+    return View(new RegisterViewModel());
+}
+
+[HttpPost("register")]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> Register(RegisterViewModel model)
+{
+    if (!ModelState.IsValid)
+    {
+        return View(model);
+    }
+    
+    // Kiểm tra email đã tồn tại
+    if (await _userService.EmailExistsAsync(model.Email))
+    {
+        ModelState.AddModelError(nameof(model.Email), "Email đã được sử dụng");
+        return View(model);
+    }
+    
+    // Tạo user
+    var user = await _userService.CreateUserAsync(model);
+    
+    TempData["SuccessMessage"] = "Đăng ký thành công!";
+    return RedirectToAction("Login");
+}
+```
+
+**Best practices:**
+- ViewModel riêng cho form
+- Validation attributes đầy đủ
+- Custom validation cho logic phức tạp
+- Server-side validation bổ sung
+
+---
+
+## ✅ 8. BEST PRACTICES
+
+### 8.1. Validation Best Practices
+
+```csharp
+// ✅ Đúng: Validation ở nhiều lớp
+public class Product
+{
+    [Required]
+    [StringLength(100)]
+    public string Name { get; set; }
+    
+    [Range(0.01, 1000000)]
+    public decimal Price { get; set; }
+}
+
+// Controller
+if (!ModelState.IsValid)
+    return View(model);
+
+// Service layer validation
+if (await _repository.NameExistsAsync(product.Name))
+    throw new ValidationException("Tên sản phẩm đã tồn tại");
+```
+
+### 8.2. ViewModel Best Practices
+
+```csharp
+// ✅ Đúng: ViewModel cho mỗi use case
+public class CreateProductViewModel { }
+public class EditProductViewModel { }
+public class ProductListViewModel { }
+
+// ❌ Sai: Dùng Entity trực tiếp
+public IActionResult Create(Product product) { } // ❌
+```
+
+### 8.3. Model Binding Best Practices
+
+```csharp
+// ✅ Đúng: [FromBody] cho API
+[HttpPost]
+public IActionResult Create([FromBody] CreateProductRequest request) { }
+
+// ✅ Đúng: [FromForm] cho MVC form
+[HttpPost]
+public IActionResult Create([FromForm] CreateProductViewModel model) { }
+
+// ✅ Đúng: [FromQuery] cho query parameters
+[HttpGet]
+public IActionResult Search([FromQuery] string keyword) { }
+```
+
+---
+
+# 📝 9. QUICK NOTES
+
+### Model Binding Sources:
+- **Form Data**: `[FromForm]` (default cho POST)
+- **Query String**: `[FromQuery]`
+- **Route**: `[FromRoute]`
+- **Body**: `[FromBody]` (JSON cho API)
+
+### Data Annotations:
+- `[Required]`: Bắt buộc
+- `[StringLength]`: Độ dài chuỗi
+- `[Range]`: Khoảng giá trị
+- `[EmailAddress]`: Email
+- `[Compare]`: So sánh với property khác
+- `[RegularExpression]`: Regex pattern
+
+### Validation:
+- `ModelState.IsValid`: Kiểm tra validation
+- `ModelState.AddModelError()`: Thêm lỗi thủ công
+- Client-side: jQuery Unobtrusive Validation
+
+### Best Practices:
+- ✅ Dùng ViewModel thay vì Entity
+- ✅ Validate ở nhiều lớp
+- ✅ Kiểm tra ModelState.IsValid
+- ✅ Custom validators cho logic phức tạp
+
+---
+
+# 🧪 10. MINI TEST
 
 1. **ModelState.IsValid kiểm tra gì?**
    - A. Database connection

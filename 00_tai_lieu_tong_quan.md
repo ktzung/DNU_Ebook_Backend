@@ -211,6 +211,8 @@ DNU_Ebook_Backend/
 
 # 🚀 **LỘ TRÌNH HỌC 15 TUẦN**
 
+## 📋 **LỘ TRÌNH HIỆN TẠI (Lý thuyết trước, Dự án sau)**
+
 | Tuần | Nội dung | Deliverable |
 |------|----------|-------------|
 | 1 | C# Modern cho Backend | Console App với Async/LINQ |
@@ -228,6 +230,52 @@ DNU_Ebook_Backend/
 | 13 | Workshop 1 | Code Review dự án |
 | 14 | Workshop 2 | Hoàn thiện E-Shop |
 | 15 | Tổng kết & Bảo vệ | Demo & Presentation |
+
+---
+
+## 🎯 **LỘ TRÌNH ĐỀ XUẤT MỚI (Project-Based Learning)**
+
+> **Triết lý:** Học bằng cách làm dự án. Mỗi tuần = 1 tính năng E-Shop cụ thể.
+
+| Tuần | Tính năng E-Shop | Bài học | Deliverable |
+|------|------------------|---------|-------------|
+| **1** | **Setup E-Shop + Database** | EF Core, Code First | ✅ Project chạy + DB có data |
+| **2** | **RESTful API Products** | REST, ApiController | ✅ API Products CRUD |
+| **3** | **API nâng cao + DI** | DI, Service Layer | ✅ Code clean với Services |
+| **4** | **Authentication** | Identity, Register/Login | ✅ User đăng ký/đăng nhập |
+| **5** | **JWT Security** | JWT, Token | ✅ API được bảo vệ |
+| **6** | **MVC Admin Panel** | MVC, Razor | ✅ Web quản lý sản phẩm |
+| **7** | **Validation & Forms** | Model Binding, Validation | ✅ Form validation đẹp |
+| **8** | **Orders & Relationships** | EF Relationships | ✅ Đặt hàng hoạt động |
+| **9** | **Shopping Cart** | Session, State | ✅ Giỏ hàng + Checkout |
+| **10** | **Authorization** | Roles, Policies | ✅ Phân quyền Admin/User |
+| **11** | **Advanced Topics** | Caching, Logging | ✅ Performance tốt |
+| **12** | **Tích hợp & Testing** | Integration | ✅ Dự án hoàn chỉnh |
+| **13** | **Workshop 1** | Code Review | ✅ Code quality tốt |
+| **14** | **Workshop 2** | Bug Fix, Polish | ✅ UI/UX đẹp |
+| **15** | **Bảo vệ dự án** | Demo, Presentation | ✅ Demo thành công |
+
+### 🔄 **So sánh nhanh:**
+
+**Lộ trình cũ:**
+- ❌ Học lý thuyết 12 tuần, làm dự án 3 tuần cuối
+- ❌ Khó hiểu vì thiếu context thực tế
+- ❌ Dự án chỉ là "tích hợp" mơ hồ
+
+**Lộ trình mới:**
+- ✅ Dự án là trung tâm từ tuần 1
+- ✅ Mỗi tuần = 1 tính năng cụ thể
+- ✅ Học lý thuyết qua thực hành
+- ✅ Deliverable rõ ràng mỗi tuần
+
+### 📖 **Tài liệu chi tiết:**
+
+- **Lộ trình mới đầy đủ:** Xem [LO_TRINH_HOC_MOI.md](./LO_TRINH_HOC_MOI.md)
+- **E-Shop Roadmap:** Xem [EShop_Roadmap.md](./EShop_Roadmap.md)
+
+---
+
+> 💡 **Khuyến nghị:** Áp dụng lộ trình mới để sinh viên dễ hiểu và bám sát dự án thực tế hơn.
 
 ---
 
