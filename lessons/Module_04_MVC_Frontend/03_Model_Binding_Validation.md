@@ -1,4 +1,4 @@
-# 🟩 CHƯƠNG 04
+# 🟩 CHƯƠNG 13
 # **MODEL BINDING & VALIDATION**
 
 Model Binding là cơ chế tự động ánh xạ dữ liệu từ HTTP request vào C# objects. Validation đảm bảo dữ liệu nhập vào hợp lệ trước khi xử lý.
@@ -963,4 +963,4 @@ public IActionResult Search([FromQuery] string keyword) { }
 
 ---
 
-**Chương tiếp theo: [05. Entity Framework Core — Phần 1 →](./05_entity_framework_core_p1.md)**
+**Chương tiếp theo: [14. Layout, Partial Views & Bootstrap →](./04_Layout_Bootstrap.md)**

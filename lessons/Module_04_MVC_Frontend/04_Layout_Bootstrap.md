@@ -1,4 +1,4 @@
-# 📘 CHƯƠNG 08
+# 🟩 CHƯƠNG 14
 # **LAYOUT, PARTIAL VIEWS & TÁI SỬ DỤNG BỐ CỤC**
 
 > **Mục tiêu:** Hiểu cách phân chia, kế thừa và tái sử dụng bố cục trang web trong ASP.NET Core MVC
@@ -1314,5 +1314,5 @@ Views/Products/_ProductCard.cshtml
 
 ---
 
-**Chương tiếp theo: [08. RESTful Web API →](../phan_3_web_api_security/08_restful_web_api.md)**
+**Chương tiếp theo: [15. EF Core Advanced Relationships →](../Module_05_Business_Logic/01_EF_Core_Advanced_Relations.md)**
 

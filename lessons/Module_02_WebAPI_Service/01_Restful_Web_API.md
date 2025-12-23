@@ -1,4 +1,4 @@
-# 🟨 CHƯƠNG 08
+# 🟨 CHƯƠNG 06
 # **RESTFUL WEB API**
 
 ## 📖 1. Giới thiệu RESTful API
@@ -628,4 +628,4 @@ public async Task<ActionResult<PagedResult<ProductDto>>> GetProducts(...)
 
 ---
 
-**Chương tiếp theo: [09. Authentication & Identity →](./09_authentication_identity.md)**
+**Chương tiếp theo: [07. DI & Services →](./02_DI_Services_Conventions.md)**

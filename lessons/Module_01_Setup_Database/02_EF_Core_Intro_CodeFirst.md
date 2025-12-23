@@ -1,4 +1,4 @@
-# 🟩 CHƯƠNG 05
+# 🟦 CHƯƠNG 05
 # **ENTITY FRAMEWORK CORE — PHẦN 1: CODE FIRST & MIGRATIONS**
 
 Entity Framework Core (EF Core) là ORM (Object-Relational Mapper) giúp bạn làm việc với Database bằng C# objects thay vì viết SQL thuần. Chương này tập trung vào **Code First** — cách tiếp cận hiện đại nhất.
@@ -1051,4 +1051,4 @@ protected override void OnModelCreating(ModelBuilder modelBuilder)
 
 ---
 
-**Chương tiếp theo: [06. Entity Framework Core — Phần 2: CRUD & Relationships →](./06_entity_framework_core_p2.md)**
+**Chương tiếp theo: [06. RESTful Web API →](../Module_02_WebAPI_Service/01_Restful_Web_API.md)**

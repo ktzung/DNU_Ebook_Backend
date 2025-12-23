@@ -1,4 +1,4 @@
-# 📘 CHƯƠNG 03
+# 🟨 CHƯƠNG 07
 # **ASP.NET CORE CONVENTIONS - QUY TẮC MẶC ĐỊNH**
 
 > **Convention over Configuration** = Quy ước thay vì cấu hình. ASP.NET Core có nhiều quy tắc mặc định giúp bạn code ít hơn, nhanh hơn.
@@ -1207,5 +1207,5 @@ public IActionResult Details(int id) // ← Khớp với route {id}
 
 ---
 
-**Chương tiếp theo: [03. MVC Pattern & Routing →](../phan_2_mvc_database/03_mvc_pattern.md)**
+**Chương tiếp theo: [08. Architecture Overview →](./03_Architecture_Overview.md)**
 

@@ -1,4 +1,4 @@
-# 🟩 CHƯƠNG 06
+# 🟩 CHƯƠNG 15
 # **ENTITY FRAMEWORK CORE — PHẦN 2: CRUD & RELATIONSHIPS**
 
 Sau khi đã biết tạo Database bằng Code First, bây giờ chúng ta học cách thao tác dữ liệu: Create, Read, Update, Delete (CRUD) và làm việc với quan hệ giữa các bảng.
@@ -1142,5 +1142,4 @@ modelBuilder.Entity<Product>()
 
 ---
 
-**Chương tiếp theo: [07. Razor View Engine →](./07_razor_view_engine.md)**  
-**Sau đó: [08. Layout & Partial Views →](./08_layout_partial_views_reuse.md)**
+**Chương tiếp theo: [16. Authorization & Roles →](./02_Authorization_Roles.md)**

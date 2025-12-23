@@ -1,4 +1,4 @@
-# 🟦 CHƯƠNG 01
+# 🟦 CHƯƠNG 04
 # **C# MODERN CHO BACKEND DEVELOPMENT**
 
 Trước khi xây dựng ứng dụng web với ASP.NET Core, bạn cần nắm vững các tính năng hiện đại của C# — những công cụ mạnh mẽ giúp code ngắn gọn, hiệu quả và dễ bảo trì hơn.
@@ -1184,4 +1184,4 @@ string Describe(object obj) => obj switch
 
 ---
 
-**Chương tiếp theo: [02. Kiến trúc ASP.NET Core →](./02_kien_truc_aspnet_core.md)**
+**Chương tiếp theo: [05. Entity Framework Core →](./02_EF_Core_Intro_CodeFirst.md)**

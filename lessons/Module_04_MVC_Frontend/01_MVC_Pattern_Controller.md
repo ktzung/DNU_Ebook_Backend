@@ -1,4 +1,4 @@
-# 🟩 CHƯƠNG 03
+# 🟩 CHƯƠNG 11
 # **MVC PATTERN & ROUTING**
 
 ASP.NET Core MVC là pattern phổ biến để xây dựng web applications. Chương này giúp bạn hiểu cách MVC hoạt động và cách định tuyến (routing) requests đến đúng controller.
@@ -1165,4 +1165,4 @@ public IActionResult New() { } // Không rõ là create hay gì
 
 ---
 
-**Chương tiếp theo: [04. Model Binding & Validation →](./04_model_binding_validation.md)**
+**Chương tiếp theo: [12. Razor View Engine & UI →](./02_Razor_View_Engine.md)**

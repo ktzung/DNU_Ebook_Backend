@@ -533,4 +533,4 @@ localStorage.setItem('token', token); // ❌
 
 ---
 
-**Chương tiếp theo: [11. Authorization →](./11_authorization.md)**
+**Chương tiếp theo: [11. MVC Pattern & Routing →](../Module_04_MVC_Frontend/01_MVC_Pattern_Controller.md)**

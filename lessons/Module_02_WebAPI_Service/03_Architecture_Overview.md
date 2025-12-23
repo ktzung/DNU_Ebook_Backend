@@ -1,4 +1,4 @@
-# 🟦 CHƯƠNG 02
+# 🟨 CHƯƠNG 08
 # **KIẾN TRÚC ASP.NET CORE**
 
 ASP.NET Core là framework hiện đại để xây dựng ứng dụng web và API. Chương này giúp bạn hiểu kiến trúc cốt lõi của ASP.NET Core — nền tảng cho mọi ứng dụng Backend.
@@ -1515,5 +1515,4 @@ app.Run();
 
 ---
 
-**Chương tiếp theo: [03. ASP.NET Core Conventions →](./03_aspnet_core_conventions.md)**  
-**Sau đó: [03. MVC Pattern & Routing →](../phan_2_mvc_database/03_mvc_pattern.md)**
+**Chương tiếp theo: [09. Authentication & Identity →](../Module_03_Security_Auth/01_Authentication_Identity.md)**

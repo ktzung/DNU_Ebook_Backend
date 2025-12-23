@@ -1,4 +1,4 @@
-# 🟩 CHƯƠNG 07
+# 🟩 CHƯƠNG 12
 # **RAZOR VIEW ENGINE & UI**
 
 ## 📖 1. Giới thiệu Razor View Engine
@@ -576,4 +576,4 @@ else
 
 ---
 
-**Chương tiếp theo: [08. Layout & Partial Views →](./08_layout_partial_views_reuse.md)**
+**Chương tiếp theo: [13. Model Binding & Validation →](./03_Model_Binding_Validation.md)**

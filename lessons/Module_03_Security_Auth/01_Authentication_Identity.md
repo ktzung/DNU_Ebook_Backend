@@ -890,4 +890,4 @@ options.Lockout.AllowedForNewUsers = true;
 
 ---
 
-**Chương tiếp theo: [10. JWT Security →](./10_jwt_security.md)**
+**Chương tiếp theo: [10. JWT Security →](./02_JWT_Security.md)**

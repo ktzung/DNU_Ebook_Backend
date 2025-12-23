@@ -1,4 +1,4 @@
-# 🟨 CHƯƠNG 11
+# 🟨 CHƯƠNG 16
 # **AUTHORIZATION — PHÂN QUYỀN NÂNG CAO**
 
 Sau khi có Authentication (xác thực), Authorization (phân quyền) quyết định user được làm gì. Chương này hướng dẫn các kỹ thuật phân quyền nâng cao trong ASP.NET Core.
@@ -894,4 +894,4 @@ if (!authResult.Succeeded)
 
 ---
 
-**Chương tiếp theo: [12. Advanced Topics →](../phan_4_advanced/12_advanced_topics.md)**
+**Chương tiếp theo: [17. Transactions & Concurrency →](./03_Transactions_Concurrency.md)**
