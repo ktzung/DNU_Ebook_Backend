@@ -9,7 +9,7 @@
 Dưới đây là biên bản ghi lại quá trình quan sát thực tế tại thư viện Đại học DNU. Chúng ta sẽ dùng đoạn văn này làm "nguyên liệu" duy nhất cho thiết kế.
 
 **Quy ước phân tích:**
-*   <span style="color:#007bff; font-weight:bold;">DANH TỪ (MOUNS)</span>: Màu xanh dương - Ứng viên cho **Class (Thực thể)** hoặc **Attribute (Thuộc tính)**.
+*   <span style="color:#007bff; font-weight:bold;">DANH TỪ (NOUNS)</span>: Màu xanh dương - Ứng viên cho **Class (Thực thể)** hoặc **Attribute (Thuộc tính)**.
 *   <span style="color:#dc3545; font-weight:bold; font-style:italic; text-decoration:underline;">ĐỘNG TỪ (VERBS)</span>: Màu đỏ, gạch chân - Ứng viên cho **Relationship (Quan hệ)** hoặc **Hành vi**.
 
 ### VĂN BẢN MÔ TẢ:
@@ -189,3 +189,4 @@ Khi thiết kế cơ sở dữ liệu, các bạn hãy nhớ quy trình tư duy:
     *   *Tại sao cần bảng chi tiết mượn?* -> Vì một lần mượn được nhiều sách.
     *   *Tại sao cần khóa ngoại?* -> Để máy tính hiểu mối liên kết giữa các bảng.
 3.  **Code First là hệ quả**: Khi Sơ đồ Lớp (Class Diagram) đã rõ ràng, việc viết Code C# class (Entity) là sự chuyển đổi tự nhiên 1-1. Lập trình chính là sự phản ánh logic của thực tế.
+
