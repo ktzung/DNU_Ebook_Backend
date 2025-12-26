@@ -85,7 +85,23 @@ Quan hệ (Relationship) trả lời câu hỏi: *Các Class kết nối với n
 
 ### BƯỚC 3: XÂY DỰNG BIỂU ĐỒ LỚP (CLASS DIAGRAM)
 
-Sau khi phân tích kỹ, ta vẽ sơ đồ các Class (Thực thể) và các dây nối (Quan hệ).
+Trước khi vẽ, hãy ôn lại **3 Quy tắc vàng** của Biểu đồ lớp (Class Diagram):
+
+**1. Quy tắc về Hộp (Box) - Đại diện cho Class**
+Mỗi danh từ được chọn làm Class (ở Bước 1) sẽ là một chiếc hộp.
+*   Phần trên: Tên Class (Ví dụ: `Book`).
+*   Phần dưới: Các thuộc tính (Ví dụ: `Title`, `Author`).
+
+**2. Quy tắc về Dây nối - Đại diện cho Quan hệ**
+Sử dụng đường nối để thể hiện quan hệ chúng ta đã tìm ra ở Bước 2.
+*   **Mũi tên**: Thường trỏ từ "Cái sở hữu" sang "Cái thành phần" hoặc thể hiện hướng trích xuất thông tin.
+*   **Số lượng (Cardinality)**:
+    *   `1`: Chỉ có một.
+    *   `0..1`: Có thể không có hoặc có 1.
+    *   `*` (hoặc `n`): Có nhiều.
+
+**3. Kết quả áp dụng**
+Dựa trên 2 quy tắc trên, ta nối các hộp lại với nhau:
 
 ```mermaid
 classDiagram
@@ -122,28 +138,45 @@ classDiagram
 ```
 
 > **Giải thích sơ đồ:**
-> *   `Student` trỏ sang `LoanTicket`: 1 sinh viên có danh sách các phiếu mượn.
-> *   `LoanTicketDetail` nằm giữa `LoanTicket` và `Book`: Đây chính là bảng trung gian để giải quyết quan hệ Nhiều-Nhiều. Nó lưu thêm thông tin: *Quyển sách này trong phiếu này bao giờ thì trả?*
+> *   `Student` trỏ sang `LoanTicket` với số `1` ở đầu Student và `N` ở đầu Ticket => Nghĩa là "1 SV có nhiều Phiếu".
+> *   `LoanTicketDetail` nằm giữa => Đây là kỹ thuật chuẩn để xử lý quan hệ N-N trong thiết kế hệ thống.
 
 ---
 
 ## 3. CHUYỂN ĐỔI SANG THIẾT KẾ CƠ SỞ DỮ LIỆU (DATABASE SCHEMA)
 
-Đây là bước cuối cùng: "Ánh xạ" (Map) từ Sơ đồ Class ở trên thành Bảng (Table) trong SQL Server.
+Bước này thường làm các bạn bối rối nhất: *"Làm sao từ cái hình vẽ ở trên mà ra được bảng SQL?"*
+Đừng lo, chỉ có **2 luật bất biến** cần nhớ:
 
-**Quy tắc vàng khi Ánh xạ:**
-1.  **Class** -> Thành **Table**.
-2.  **Attribute** -> Thành **Column**.
-3.  **Mũi tên quan hệ** -> Thành **Foreign Key (Khóa ngoại)**.
-    *   *Mẹo nhớ*: Mũi tên chỉ từ 1 sang N, thì bảng bên **N** sẽ giữ khóa ngoại của bảng bên 1. (Ví dụ: Mũi tên từ Category sang Book -> Bảng Book sẽ có cột `CategoryId`).
+### LUẬT 1: Class biến thành Table
+Cái này dễ nhất.
+*   Class `Book` --> Bảng `Books`.
+*   Thuộc tính `Title` --> Cột `Title`.
+*   *Tự động thêm*: Luôn thêm cột `Id` làm Khóa chính (Primary Key/PK) cho mỗi bảng để định danh.
 
-| Tên Bảng (Table) | Cột (Columns) | Giải thích Khóa ngoại (Tại sao có cột này?) |
-| :--- | :--- | :--- |
-| **Categories** | `Id`, `Name` | Không có (Bảng độc lập). |
-| **Books** | `Id`, `Title`, `Author`, `Price`, **`CategoryId`** | Cột `CategoryId` để biết sách này thuộc thể loại nào. |
-| **Students** | `Id`, `StudentCode`, `FullName` | Không có. |
-| **LoanTickets** | `Id`, `LoanDate`, **`StudentId`** | Cột `StudentId` để biết phiếu này là của ai. |
-| **LoanTicketDetails** | `Id`, `ReturnDate`, `Note`, **`LoanTicketId`**, **`BookId`** | Chứa 2 khóa ngoại để nối Phiếu và Sách lại với nhau. |
+### LUẬT 2: Xử lý Quan hệ (Mapping Relationships)
+Đây là chỗ quyết định đúng/sai của Database.
+Chúng ta không vẽ dây nối trong SQL, mà chúng ta dùng **Khóa ngoại (Foreign Key/FK)**.
+
+*   **Quy tắc "Cha-Con" (Quan hệ 1-N)**:
+    *   Bên `1` là Cha. Bên `N` là Con.
+    *   **Quy tắc:** "Con đi đâu phải mang theo họ của Cha".
+    *   => **Bảng bên phía `N` sẽ chứa cột `Id` của bảng bên phía `1`**.
+
+*   *Ví dụ áp dụng:*
+    *   Quan hệ: `Category` (1) ---- (N) `Book`.
+    *   Suy luận: `Book` là Con. `Category` là Cha.
+    *   Hành động: Thêm cột `CategoryId` vào bảng `Books`.
+
+### BẢNG ÁNH XẠ KẾT QUẢ (MAPPING TABLE)
+
+| Tên Bảng (Table) | Cột thông thường | Cột KHÓA NGOẠI (Áp dụng Luật 2) | Giải thích |
+| :--- | :--- | :--- | :--- |
+| **Categories** | `Id`, `Name` | *(Không có)* | Vì nó là bảng cha (bên 1), không phụ thuộc ai. |
+| **Books** | `Id`, `Title`, `Author`, `Price` | **`CategoryId`** | Vì Book thuộc về Category (N book - 1 category). |
+| **Students** | `Id`, `StudentCode`, `FullName` | *(Không có)* | Độc lập. |
+| **LoanTickets** | `Id`, `LoanDate` | **`StudentId`** | Vì Ticket thuộc về Student (N ticket - 1 student). |
+| **LoanTicketDetails** | `Id`, `ReturnDate`, `Note` | **`LoanTicketId`**, **`BookId`** | Vì nó là con của cả 2 bảng trên. |
 
 ---
 
